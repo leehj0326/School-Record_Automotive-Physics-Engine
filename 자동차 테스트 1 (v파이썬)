@@ -1,4 +1,5 @@
 # 제미나이
+Web VPython 3.2
 from vpython import *
 
 # 1. 화면 설정 및 카메라 앵글 조정
@@ -9,7 +10,7 @@ scene.up = vec(0, 1, 0)
 
 # 2. 실시간 속도 그래프 창
 v_graph = graph(title="시간-속도 (v-t) 그래프", xtitle="시간 (s)", ytitle="속도 (km/h)", 
-                width=800, height=220, fast=False)
+                width=800, height=200, fast=False)
 v_curve = gcurve(color=color.blue, width=2)
 
 # 3. 그래픽 객체 생성
@@ -19,17 +20,61 @@ wall = box(pos=vec(10, 0.5, 0), size=vec(0.5, 2, 4), color=color.red)
 floor_normal = box(pos=vec(-6, -0.1, 0), size=vec(10, 0.2, 4), color=color.gray(0.5))
 floor_brake = box(pos=vec(4, -0.1, 0), size=vec(10, 0.2, 4), color=vec(0.3, 0.1, 0.1)) 
 
-# 자동차 조립
-body = box(pos=vec(0, 0.4, 0), size=vec(1.8, 0.6, 1), color=color.blue)
-cabin = box(pos=vec(-0.2, 0.8, 0), size=vec(0.9, 0.4, 0.9), color=color.cyan, opacity=0.6)
-wh1 = cylinder(pos=vec(0.5, 0.1, 0.5), axis=vec(0,0,0.2), radius=0.25, color=color.black)
-wh2 = cylinder(pos=vec(0.5, 0.1, -0.7), axis=vec(0,0,0.2), radius=0.25, color=color.black)
-wh3 = cylinder(pos=vec(-0.5, 0.1, 0.5), axis=vec(0,0,0.2), radius=0.25, color=color.black)
-wh4 = cylinder(pos=vec(-0.5, 0.1, -0.7), axis=vec(0,0,0.2), radius=0.25, color=color.black)
+# ------------------------------------------------------------------
+# [핵심] 질량에 따라 다른 모양의 차량을 조립하여 반환하는 함수
+def build_car(mass, pos):
+    parts = []
+    
+    if mass <= 1200: # [경차] 작고 동글동글하게
+        body = box(pos=vec(0, 0.3, 0), size=vec(1.2, 0.5, 0.9), color=color.blue)
+        cabin = box(pos=vec(-0.1, 0.6, 0), size=vec(0.6, 0.3, 0.8), color=color.cyan, opacity=0.6)
+        wh_r = 0.2
+        wh_offs = vec(0.4, 0.1, 0.45)
+    
+    elif mass <= 2500: # [승용차/SUV] 표준 형태
+        body = box(pos=vec(0, 0.4, 0), size=vec(1.8, 0.6, 1.0), color=color.gray(0.3))
+        cabin = box(pos=vec(-0.2, 0.8, 0), size=vec(0.9, 0.4, 0.9), color=color.cyan, opacity=0.6)
+        wh_r = 0.25
+        wh_offs = vec(0.6, 0.1, 0.5)
 
-car = compound([body, cabin, wh1, wh2, wh3, wh4], pos=vec(-10, 0.2, 0), make_trail=False)
+    elif mass <= 12000: # [중형 트럭/버스] 길고 높게
+        body = box(pos=vec(0, 0.6, 0), size=vec(3.0, 1.0, 1.2), color=color.orange)
+        cabin = box(pos=vec(1.0, 1.3, 0), size=vec(1.0, 0.8, 1.1), color=color.cyan, opacity=0.6)
+        cargo = box(pos=vec(-0.6, 1.3, 0), size=vec(2.2, 0.8, 1.1), color=color.white, opacity=0.8) # 짐칸
+        parts.append(cargo)
+        wh_r = 0.35
+        wh_offs = vec(1.0, 0.1, 0.6)
+        wh_rear2 = cylinder(pos=vec(-0.6, 0.1, wh_offs.z), axis=vec(0,0,0.1), radius=wh_r, color=color.black) # 복륜 바퀴 추가
+        wh_rear3 = cylinder(pos=vec(-0.6, 0.1, -wh_offs.z-0.1), axis=vec(0,0,0.1), radius=wh_r, color=color.black)
+        parts.extend([wh_rear2, wh_rear3])
 
-# 4. 초기 물리 변수 설정
+    else: # [대형 트럭/덤프] 가장 묵직하고 웅장하게
+        body = box(pos=vec(0, 0.8, 0), size=vec(4.5, 1.4, 1.5), color=color.red)
+        cabin = box(pos=vec(1.6, 1.8, 0), size=vec(1.3, 1.0, 1.4), color=color.cyan, opacity=0.6)
+        dump = box(pos=vec(-0.8, 1.8, 0), size=vec(3.5, 1.0, 1.4), color=color.gray(0.7)) # 덤프 적재함
+        parts.append(dump)
+        wh_r = 0.5
+        wh_offs = vec(1.6, 0.1, 0.75)
+        # 바퀴 여러 개 추가
+        parts.append(cylinder(pos=vec(0.2, 0.1, wh_offs.z), axis=vec(0,0,0.1), radius=wh_r, color=color.black))
+        parts.append(cylinder(pos=vec(0.2, 0.1, -wh_offs.z-0.1), axis=vec(0,0,0.1), radius=wh_r, color=color.black))
+        parts.append(cylinder(pos=vec(-1.2, 0.1, wh_offs.z), axis=vec(0,0,0.1), radius=wh_r, color=color.black))
+        parts.append(cylinder(pos=vec(-1.2, 0.1, -wh_offs.z-0.1), axis=vec(0,0,0.1), radius=wh_r, color=color.black))
+
+    # 공통 바퀴 4개 조립
+    wh1 = cylinder(pos=vec(wh_offs.x, 0.1, wh_offs.z), axis=vec(0,0,0.1), radius=wh_r, color=color.black)
+    wh2 = cylinder(pos=vec(wh_offs.x, 0.1, -wh_offs.z-0.1), axis=vec(0,0,0.1), radius=wh_r, color=color.black)
+    wh3 = cylinder(pos=vec(-wh_offs.x, 0.1, wh_offs.z), axis=vec(0,0,0.1), radius=wh_r, color=color.black)
+    wh4 = cylinder(pos=vec(-wh_offs.x, 0.1, -wh_offs.z-0.1), axis=vec(0,0,0.1), radius=wh_r, color=color.black)
+    
+    parts.extend([body, cabin, wh1, wh2, wh3, wh4])
+    
+    # 여러 도형을 'car'라는 하나의 움직이는 물체로 합치기
+    new_car = compound(parts, pos=pos, make_trail=False)
+    return new_car
+# ------------------------------------------------------------------
+
+# 4. 초기 물리 변수 설정 및 초기 차량 생성
 g = 9.8
 m_val = 1500   
 v_kmh = 50     
@@ -38,9 +83,15 @@ mu_val = 0.5
 running = False
 brake_start_x = -1.0 
 
+# 초기 차량 생성 (build_car 함수 사용)
+car_start_pos = vec(-10, 0, 0)
+car = build_car(m_val, car_start_pos)
+car.v = vec(0, 0, 0) # 속도 초기화
+
 # 5. UI 컨트롤러 배치
 scene.append_to_caption("\n=== 제어판 ===\n\n")
 
+# 질량에 따른 차종 분류 함수
 def get_car_type(mass):
     if mass <= 1200:
         return "경차 (예: 모닝, 레이)"
@@ -55,6 +106,7 @@ def get_car_type(mass):
     else:
         return "대형 트럭/대형 덤프트럭 (25톤 카고 등)"
 
+# 마찰 계수에 따른 브레이크 상태 분류 함수
 def get_brake_type(mu):
     if mu <= 0.2:
         return "❄️ 빙판길 / 빗길 수막현상 (매우 미끄러움)"
@@ -67,14 +119,27 @@ def get_brake_type(mu):
     else:
         return "🏎️ 고성능 레이싱 카 / 초강력 흡착 제동 시스템"
 
+# 이벤트 핸들러 함수들
 def set_mass(s):
-    global m_val
+    global m_val, car
+    
+    # 만약 시뮬레이션이 실행 중이라면 질량 변경을 막음 (에러 방지)
+    if running: return 
+    
+    m_val = s.value
     car_type = get_car_type(m_val)
     car_type_txt.text = f"<span style='font-size: 12px; color: #666;'>[차종 가이드] {car_type}</span><br>"
     mass_txt.text = f" 차량 질량: {m_val:,} kg ({m_val/1000:.2f} t)"
+    
+    # [핵심 수정] 기존 차량을 지우고, 새로운 질량에 맞는 모양으로 재생성
+    current_pos = car.pos
+    car.visible = False # 화면에서 숨김
+    del car # 메모리에서 삭제 (선택 사항이지만 안전함)
+    car = build_car(m_val, current_pos) # 새로운 모양으로 조립
 
 def set_speed(s):
     global v_kmh
+    v_kmh = s.value
     speed_txt.text = f" 초기 속도: {v_kmh:>3} km/h"
 
 def set_friction(s):
@@ -88,9 +153,11 @@ def run_button(b):
     global running
     running = True
 
+# 버튼 배치
 button(text="▶ 테스트 시작", bind=run_button)
 scene.append_to_caption("\n\n")
 
+# 질량 슬라이더 레이아웃
 car_type = get_car_type(m_val)
 car_type_txt = wtext(text=f"<span style='font-size: 12px; color: #666;'>[차종 가이드] {car_type}</span><br>")
 mass_txt = wtext(text=f" 차량 질량: {m_val:,} kg ({m_val/1000:.2f} t)")
@@ -98,11 +165,13 @@ scene.append_to_caption("<br>")
 slider(min=500, max=25000, value=1500, step=100, length=300, bind=set_mass)
 scene.append_to_caption("\n\n")
 
+# 속도 슬라이더 레이아웃
 speed_txt = wtext(text=f" 초기 속도: {v_kmh} km/h")
 scene.append_to_caption("<br>")
 slider(min=20, max=110, value=50, step=5, length=300, bind=set_speed)
 scene.append_to_caption("\n\n")
 
+# 마찰력 슬라이더 레이아웃 (브레이크 안내 작은 글씨 추가)
 brake_type = get_brake_type(mu_val)
 brake_type_txt = wtext(text=f"<span style='font-size: 12px; color: #666;'>[브레이크 가이드] {brake_type}</span><br>")
 fric_txt = wtext(text=f" 브레이크 강도(마찰 계수): {mu_val:.2f}")
@@ -110,6 +179,7 @@ scene.append_to_caption("<br>")
 slider(min=0.0, max=2.5, value=0.5, step=0.05, length=300, bind=set_friction)
 scene.append_to_caption("\n\n================\n")
 
+# 결과 및 탑승자 피해 시각화 창
 result_txt = wtext(text="<h3><b>[테스트 결과] 대기 중...</b></h3>")
 injury_txt = wtext(text="<div style='padding:10px; background-color:#eee; border-radius:5px;'><b>[탑승자 안전 상태]</b> 시뮬레이션을 시작해 주세요.</div>")
 
@@ -125,7 +195,7 @@ while True:
         
         v_ms = v_kmh / 3.6
         car.v = vec(v_ms, 0, 0)
-        car.pos = vec(-10, 0.3, 0) 
+        car.pos = vec(-10, 0.3, 0) # 바퀴 높이 고려
         v_curve.delete() 
         result_txt.text = "<h3><b>[테스트 결과] 시뮬레이션 진행 중...</b></h3>"
         injury_txt.text = "<div style='padding:10px; background-color:#e0f7fa;'><b>[탑승자 안전 상태]</b> 주행 중... 안전벨트 착용 상태</div>"
@@ -138,32 +208,33 @@ while True:
             current_v_kmh = car.v.x * 3.6
             v_curve.plot(t, current_v_kmh)
             
-            # 제동 구간 진입
+            # 제동 구간 진입 (자동차의 크기를 고려하여 진입 시점 결정 - compound 객체는 중심 기준이므로, 모양에 따라 전면부 오프셋 조정이 필요하지만, 단순화를 위해 고정 오프셋 사용)
             if car.pos.x + 0.9 >= brake_start_x:
                 friction_force = -current_mu * current_m * g
                 a_x = friction_force / current_m
                 car.v.x = car.v.x + a_x * dt
                 
-                # [수정 포인트] 브레이크 구역에서 속도가 0 이하가 되면 완전히 정지한 것임
+                # 안전 정지 조건
                 if car.v.x <= 0:
                     car.v.x = 0
-                    v_curve.plot(t, 0) # 그래프에 마지막 0점 찍어주기
+                    v_curve.plot(t, 0)
                     result_txt.text = "<h2 style='color: green;'><b>[안전 정지] 벽에 부딪히기 전에 멈췄습니다!</b></h2>"
                     injury_txt.text = "<div style='padding:15px; background-color:#c8e6c9; border:2px solid #388e3c;'><h2><b>🟢 0단계: 절대 안전</b></h2><p>브레이크가 완벽하게 작동하여 충돌 없이 정지했습니다.</p></div>"
                     running = False
-                    break # 완전히 정지했으므로 내부 루프 즉시 탈출 (시간 및 그래프 정지)
+                    break 
             
             car.pos = car.pos + car.v * dt
             t = t + dt 
             
-            # 벽과의 충돌 조건
-            if car.pos.x + 0.9 >= wall.pos.x - 0.25:
+            # 벽과의 충돌 조건 (덤프 같은 긴 차량은 벽에 더 빨리 닿으므로, 전면부 오프셋을 모양에 따라 동적으로 설정해야 완벽하지만, 여기선 단순화를 위해 약 1.0 오프셋 사용)
+            if car.pos.x + 1.0 >= wall.pos.x - 0.25:
                 v_final_ms = car.v.x
                 v_final_kmh = v_final_ms * 3.6 
                 impulse = current_m * v_final_ms   
                 
                 v_curve.plot(t, v_final_kmh)
                 
+                # 결과 출력 및 충격량 단계별 피해 시각화
                 if v_final_ms > 0:
                     result_txt.text = f"<h2 style='color: red;'><b>[충돌 발생] 충돌 속도: {v_final_kmh:.1f} km/h / 충격량: {impulse:.2f} N·s</b></h2>"
                     
@@ -176,7 +247,5 @@ while True:
                     else:
                         injury_txt.text = "<div style='padding:15px; background-color:#b71c1c; color:white; border:3px solid black;'><h2><b>💀 4단계: 치명적인 충격 (중상)</b></h2><p><b>차량 전면부 대파!</b> 대형 차량의 엄청난 질량 관성으로 인해 탑승자가 중상을 입을 확률이 매우 높습니다.</p></div>"
                 
-                running = False
-                break
                 running = False
                 break
