@@ -1,28 +1,32 @@
-Web VPython 3.2 
+Web VPython 3.2
 from vpython import *
 
-# 1. 화면 설정 및 카메라 앵글 조정 (주행 거리가 길어져서 카메라 위치를 더 멀리, 중심을 조정)
-scene = canvas(title="자동차 안전성 테스트 (제동 및 충돌)", width=800, height=400)
-scene.camera.pos = vec(-5, 18, 22)  # 전체를 조망할 수 있도록 카메라를 더 높고 멀리 배치
-scene.camera.axis = vec(5, -18, -22) 
+# 1. 화면 설정 및 카메라 앵글 최적화
+scene = canvas(title="자동차 안전성 테스트 (제동 및 충돌)", width=650, height=380, align="left")
+scene.camera.pos = vec(-8, 16, 26)  
+scene.camera.axis = vec(3, -15, -26) 
 scene.up = vec(0, 1, 0)
 
-# 2. 실시간 속도 그래프 창
-v_graph = graph(title="시간-속도 (v-t) 그래프", xtitle="시간 (s)", ytitle="속도 (km/h)", 
-                width=800, height=200, fast=False)
-v_curve = gcurve(color=color.blue, width=2)
+# 2. [에러 수정] 문제가 되는 xtickinc 옵션을 제거하고 범위를 조절하여 정수 표현 유도
+impulse_graph = graph(title="회차별 충돌 충격량 비교 (단위: 만 N·s)", xtitle="테스트 회차 (회)", ytitle="충격량", 
+                      width=450, height=380, align="right", fast=False,
+                      xmin=0.5, xmax=1.5, ymin=0, ymax=1) # 1회차가 가운데 딱 들어오도록 범위 설정
 
-# 3. 그래픽 객체 생성 (마찰력 없는 구간을 기존 10에서 30으로 3배 늘림)
+# 세로 막대 그래프(gvbars) 객체 생성
+bar_chart = gvbars(color=color.red, delta=0.4)
+test_count = 1 
+
+# 3. 그래픽 객체 생성
 wall = box(pos=vec(15, 0.5, 0), size=vec(0.5, 2, 4), color=color.red)
 
-# [수정] 일반 주행 바닥의 길이를 30으로 대폭 확장하고 위치를 왼쪽으로 이동
-floor_normal = box(pos=vec(-11, -0.1, 0), size=vec(30, 0.2, 4), color=color.gray(0.5))
-# 제동 구간 바닥 (길이 12 유지, 시작점 x = 4)
-floor_brake = box(pos=vec(9, -0.1, 0), size=vec(10, 0.2, 4), color=vec(0.3, 0.1, 0.1)) 
+# 일반 주행 바닥 (끝단 x = -32)
+floor_normal = box(pos=vec(-13.5, -0.1, 0), size=vec(37, 0.2, 4), color=color.gray(0.5))
+# 제동 구간 바닥 (시작점 x = 5)
+floor_brake = box(pos=vec(10, -0.1, 0), size=vec(10, 0.2, 4), color=vec(0.3, 0.1, 0.1)) 
 
 # ------------------------------------------------------------------
-# 질량에 따라 다른 모양의 차량을 조립하여 반환하는 함수
-def build_car(mass, pos):
+# 질량에 따라 차량 모양을 조립하고, '앞머리 오프셋'을 함께 반환하는 함수
+def build_car(mass, target_front_x):
     parts = []
     
     if mass <= 1200: # [경차]
@@ -30,12 +34,14 @@ def build_car(mass, pos):
         cabin = box(pos=vec(-0.1, 0.6, 0), size=vec(0.6, 0.3, 0.8), color=color.cyan, opacity=0.6)
         wh_r = 0.2
         wh_offs = vec(0.4, 0.1, 0.45)
+        front_offset = 0.6
     
     elif mass <= 2500: # [승용차/SUV]
         body = box(pos=vec(0, 0.4, 0), size=vec(1.8, 0.6, 1.0), color=color.gray(0.3))
         cabin = box(pos=vec(-0.2, 0.8, 0), size=vec(0.9, 0.4, 0.9), color=color.cyan, opacity=0.6)
         wh_r = 0.25
         wh_offs = vec(0.6, 0.1, 0.5)
+        front_offset = 0.9
 
     elif mass <= 12000: # [중형 트럭/버스]
         body = box(pos=vec(0, 0.6, 0), size=vec(3.0, 1.0, 1.2), color=color.orange)
@@ -47,6 +53,7 @@ def build_car(mass, pos):
         wh_rear2 = cylinder(pos=vec(-0.6, 0.1, wh_offs.z), axis=vec(0,0,0.1), radius=wh_r, color=color.black)
         wh_rear3 = cylinder(pos=vec(-0.6, 0.1, -wh_offs.z-0.1), axis=vec(0,0,0.1), radius=wh_r, color=color.black)
         parts.extend([wh_rear2, wh_rear3])
+        front_offset = 1.5
 
     else: # [대형 트럭/덤프]
         body = box(pos=vec(0, 0.8, 0), size=vec(4.5, 1.4, 1.5), color=color.red)
@@ -59,6 +66,7 @@ def build_car(mass, pos):
         parts.append(cylinder(pos=vec(0.2, 0.1, -wh_offs.z-0.1), axis=vec(0,0,0.1), radius=wh_r, color=color.black))
         parts.append(cylinder(pos=vec(-1.2, 0.1, wh_offs.z), axis=vec(0,0,0.1), radius=wh_r, color=color.black))
         parts.append(cylinder(pos=vec(-1.2, 0.1, -wh_offs.z-0.1), axis=vec(0,0,0.1), radius=wh_r, color=color.black))
+        front_offset = 2.25
 
     wh1 = cylinder(pos=vec(wh_offs.x, 0.1, wh_offs.z), axis=vec(0,0,0.1), radius=wh_r, color=color.black)
     wh2 = cylinder(pos=vec(wh_offs.x, 0.1, -wh_offs.z-0.1), axis=vec(0,0,0.1), radius=wh_r, color=color.black)
@@ -67,8 +75,10 @@ def build_car(mass, pos):
     
     parts.extend([body, cabin, wh1, wh2, wh3, wh4])
     
-    new_car = compound(parts, pos=pos, make_trail=False)
-    return new_car
+    calculated_pos = vec(target_front_x - front_offset, 0, 0)
+    new_car = compound(parts, pos=calculated_pos, make_trail=False)
+    
+    return new_car, front_offset
 # ------------------------------------------------------------------
 
 # 4. 초기 물리 변수 설정
@@ -78,73 +88,70 @@ v_kmh = 50
 mu_val = 0.5   
 
 running = False
-# [수정] 주행 거리가 길어짐에 따라 바닥 경계선 위치 변경 (floor_brake의 왼쪽 끝)
-brake_start_x = 4.0 
-# [수정] 차량의 초기 시작 위치를 훨씬 더 왼쪽(-25)으로 조정
-car_start_pos = vec(-25, 0, 0)
+has_run = False 
+brake_start_x = 5.0 
 
-car = build_car(m_val, car_start_pos)
+START_FRONT_X = -25.0
+car, current_front_offset = build_car(m_val, START_FRONT_X)
 car.v = vec(0, 0, 0)
 
 # 5. UI 컨트롤러 배치
-scene.append_to_caption("\n=== 제어판 ===\n\n")
+scene.append_to_caption("<div style='clear:both;'></div>\n=== 제어판 ===\n\n")
 
 def get_car_type(mass):
-    if mass <= 1200:
-        return "경차 (예: 모닝, 레이)"
-    elif mass <= 1800:
-        return "준중형/중형 세단 (예: 아반떼, 쏘나타)"
-    elif mass <= 2500:
-        return "대형 SUV/픽업트럭 (예: 팰리세이드, 카니발)"
-    elif mass <= 5000:
-        return "소형 트럭/마이크로버스 (예: 포터, 카운티)"
-    elif mass <= 12000:
-        return "대형 버스/중형 트럭 (예: 시내버스, 5톤 트럭)"
-    else:
-        return "대형 트럭/대형 덤프트럭 (25톤 카고 등)"
-
-def get_brake_type(mu):
-    if mu <= 0.2:
-        return "❄️ 빙판길 / 빗길 수막현상 (매우 미끄러움)"
-    elif mu <= 0.4:
-        return "🌧️ 젖은 아스팔트 / 마모된 패드"
-    elif mu <= 0.8:
-        return "🚗 일반 차량 정상 브레이크 (표준 제동력)"
-    elif mu <= 1.5:
-        return "🚚 대형 트럭 배기/리타더 보조 브레이크 작동"
-    else:
-        return "🏎️ 고성능 레이싱 카 / 초강력 흡착 제동 시스템"
+    if mass <= 1200: return "경차 (예: 모닝, 레이)"
+    elif mass <= 1800: return "준중형/중형 세단 (예: 아반떼, 쏘나타)"
+    elif mass <= 2500: return "대형 SUV/픽업트럭 (예: 팰리세이드, 카니발)"
+    elif mass <= 5000: return "소형 트럭/마이크로버스 (예: 포터, 카운티)"
+    elif mass <= 12000: return "대형 버스/중형 트럭 (예: 시내버스, 5톤 트럭)"
+    else: return "대형 트럭/대형 덤프트럭 (25톤 카고 등)"
 
 def set_mass(s):
-    global m_val, car
     if running: return 
+    global m_val, car, current_front_offset
     m_val = s.value
     car_type = get_car_type(m_val)
     car_type_txt.text = f"<span style='font-size: 12px; color: #666;'>[차종 가이드] {car_type}</span><br>"
     mass_txt.text = f" 차량 질량: {m_val:,} kg ({m_val/1000:.2f} t)"
     
-    current_pos = car.pos
     car.visible = False
-    car = build_car(m_val, current_pos)
+    car, current_front_offset = build_car(m_val, START_FRONT_X)
 
 def set_speed(s):
-    global v_kmh
+    global v_kmh  
     v_kmh = s.value
     speed_txt.text = f" 초기 속도: {v_kmh:>3} km/h"
 
 def set_friction(s):
     global mu_val
     mu_val = s.value  
-    brake_type = get_brake_type(mu_val)
-    brake_type_txt.text = f"<span style='font-size: 12px; color: #666;'>[브레이크 가이드] {brake_type}</span><br>"
     fric_txt.text = f" 브레이크 강도(마찰 계수): {mu_val:.2f}"
 
 def run_button(b):
-    global running
-    running = True
+    global running, has_run
+    if not running:
+        running = True
+        has_run = True
 
-# 버튼 및 슬라이더 배치
+def reset_button(b):
+    global running, car, current_front_offset, test_count, has_run
+    running = False 
+    
+    car.visible = False
+    car, current_front_offset = build_car(m_val, START_FRONT_X)
+    car.v = vec(0, 0, 0)
+    
+    # [수정] 초기화 시 x축 그래프 범위를 다음 정수 회차가 예쁘게 들어가도록 타이트하게 지정
+    if has_run:
+        test_count += 1
+        impulse_graph.xmax = test_count + 0.5 
+        has_run = False 
+    
+    result_txt.text = f"<h3><b>[테스트 결과] {test_count}회차 대기 중...</b></h3>"
+
 button(text="▶ 테스트 시작", bind=run_button)
+scene.append_to_caption("   ")
+button(text="🔄 처음 위치로 초기화", bind=reset_button)
 scene.append_to_caption("\n\n")
 
 car_type = get_car_type(m_val)
@@ -159,15 +166,12 @@ scene.append_to_caption("<br>")
 slider(min=20, max=110, value=50, step=5, length=300, bind=set_speed)
 scene.append_to_caption("\n\n")
 
-brake_type = get_brake_type(mu_val)
-brake_type_txt = wtext(text=f"<span style='font-size: 12px; color: #666;'>[브레이크 가이드] {brake_type}</span><br>")
 fric_txt = wtext(text=f" 브레이크 강도(마찰 계수): {mu_val:.2f}")
 scene.append_to_caption("<br>")
 slider(min=0.0, max=2.5, value=0.5, step=0.05, length=300, bind=set_friction)
 scene.append_to_caption("\n\n================\n")
 
-result_txt = wtext(text="<h3><b>[테스트 결과] 대기 중...</b></h3>")
-injury_txt = wtext(text="<div style='padding:10px; background-color:#eee; border-radius:5px;'><b>[탑승자 안전 상태]</b> 시뮬레이션을 시작해 주세요.</div>")
+result_txt = wtext(text="<h3><b>[테스트 결과] 1회차 대기 중...</b></h3>")
 
 # 6. 메인 루프
 dt = 0.01
@@ -181,55 +185,48 @@ while True:
         
         v_ms = v_kmh / 3.6
         car.v = vec(v_ms, 0, 0)
-        car.pos = vec(-25, 0.3, 0) # [수정] 시작 위치를 왼쪽 끝으로 리셋
-        v_curve.delete() 
-        result_txt.text = "<h3><b>[테스트 결과] 시뮬레이션 진행 중...</b></h3>"
-        injury_txt.text = "<div style='padding:10px; background-color:#e0f7fa;'><b>[탑승자 안전 상태]</b> 주행 중... 안전벨트 착용 상태</div>"
         
-        t = 0 
+        car.pos = vec(START_FRONT_X - current_front_offset, 0.3, 0)
+        result_txt.text = f"<h3><b>[테스트 결과] {test_count}회차 진행 중...</b></h3>"
         
         while True:
             rate(100)
             
-            current_v_kmh = car.v.x * 3.6
-            v_curve.plot(t, current_v_kmh)
+            if not running: break
             
-            # 제동 구간 진입 (오프셋 조정)
-            if car.pos.x + 0.9 >= brake_start_x:
+            current_nose_x = car.pos.x + current_front_offset
+            
+            if current_nose_x >= brake_start_x:
                 friction_force = -current_mu * current_m * g
                 a_x = friction_force / current_m
                 car.v.x = car.v.x + a_x * dt
                 
                 if car.v.x <= 0:
                     car.v.x = 0
-                    v_curve.plot(t, 0)
-                    result_txt.text = "<h2 style='color: green;'><b>[안전 정지] 벽에 부딪히기 전에 멈췄습니다!</b></h2>"
-                    injury_txt.text = "<div style='padding:15px; background-color:#c8e6c9; border:2px solid #388e3c;'><h2><b>🟢 0단계: 절대 안전</b></h2><p>브레이크가 완벽하게 작동하여 충돌 없이 정지했습니다.</p></div>"
+                    result_txt.text = "<h2 style='color: green;'><b>[안전 정지] 벽에 부딪히기 전에 안전하게 멈췄습니다! (충격량: 0 N·s)</b></h2>"
+                    
+                    bar_chart.plot(test_count, 0) 
                     running = False
                     break 
             
             car.pos = car.pos + car.v * dt
-            t = t + dt 
             
-            # 벽과의 충돌 조건
-            if car.pos.x + 1.0 >= wall.pos.x - 0.25:
+            if current_nose_x >= wall.pos.x - 0.25:
+                car.pos.x = (wall.pos.x - 0.25) - current_front_offset
+                
                 v_final_ms = car.v.x
                 v_final_kmh = v_final_ms * 3.6 
-                impulse = current_m * v_final_ms   
-                
-                v_curve.plot(t, v_final_kmh)
+                impulse = current_m * v_final_ms 
                 
                 if v_final_ms > 0:
-                    result_txt.text = f"<h2 style='color: red;'><b>[충돌 발생] 충돌 속도: {v_final_kmh:.1f} km/h / 충격량: {impulse:.2f} N·s</b></h2>"
+                    result_txt.text = f"<h2 style='color: red;'><b>[💥 충돌 발생] 충돌 속도: {v_final_kmh:.1f} km/h | 최종 충격량: {impulse:,.0f} N·s</b></h2>"
                     
-                    if impulse < 8000:
-                        injury_txt.text = "<div style='padding:15px; background-color:#fff59d; border:2px solid #fbc02d;'><h2><b>🟡 1단계: 경미한 충격</b></h2><p>차량이 가볍게 쿵 하고 흔들리는 수준입니다. 부상 위험이 거의 없습니다.</p></div>"
-                    elif impulse < 30000:
-                        injury_txt.text = "<div style='padding:15px; background-color:#ffcc80; border:2px solid #f57c00;'><h2><b>🟠 2단계: 보통의 충격 (부상 주의)</b></h2><p>몸이 크게 흔들리며 목이나 어깨에 가벼운 염좌가 발생할 수 있습니다.</p></div>"
-                    elif impulse < 80000:
-                        injury_txt.text = "<div style='padding:15px; background-color:#ef9a9a; border:2px solid #d32f2f;'><h2><b>🔴 3단계: 강한 충격 (위험)</b></h2><p><b>에어백 전개!</b> 얼굴 타박상 및 갈비뼈 등에 골절 위험이 있습니다.</p></div>"
-                    else:
-                        injury_txt.text = "<div style='padding:15px; background-color:#b71c1c; color:white; border:3px solid black;'><h2><b>💀 4단계: 치명적인 충격 (중상)</b></h2><p><b>차량 전면부 대파!</b> 대형 차량의 엄청난 질량 관성으로 인해 탑승자가 중상을 입을 확률이 매우 높습니다.</p></div>"
+                    impulse_scaled = impulse / 10000.0
+                    
+                    if impulse_scaled > impulse_graph.ymax:
+                        impulse_graph.ymax = impulse_scaled * 1.2
+                        
+                    bar_chart.plot(test_count, impulse_scaled) 
                 
                 running = False
                 break
