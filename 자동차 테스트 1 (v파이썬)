@@ -1,15 +1,14 @@
 
 # 제미나이
-Web VPython 3.2
 from vpython import *
 
-# 1. 화면 설정 및 카메라 앵글 조정 (위에서 내려다보는 뷰)
+# 1. 화면 설정 및 카메라 앵글 조정
 scene = canvas(title="자동차 안전성 테스트 (제동 및 충돌)", width=800, height=400)
 scene.camera.pos = vec(0, 12, 15)  
 scene.camera.axis = vec(0, -12, -15) 
 scene.up = vec(0, 1, 0)
 
-# 2. 실시간 속도 그래프 창 (Y축 단위를 km/h로 변경)
+# 2. 실시간 속도 그래프 창
 v_graph = graph(title="시간-속도 (v-t) 그래프", xtitle="시간 (s)", ytitle="속도 (km/h)", 
                 width=800, height=220, fast=False)
 v_curve = gcurve(color=color.blue, width=2)
@@ -33,47 +32,92 @@ car = compound([body, cabin, wh1, wh2, wh3, wh4], pos=vec(-10, 0.2, 0), make_tra
 
 # 4. 초기 물리 변수 설정
 g = 9.8
-m_val = 1000   
-v_kmh = 50     # 유저에게 보여줄 초기 속도 (km/h) -> 기본값 50km/h
-mu_val = 0.3   
+m_val = 1500   
+v_kmh = 50     
+mu_val = 0.5   
 
 running = False
 brake_start_x = -1.0 
 
-# 5. UI 컨트롤러 배치 (세로 정렬)
+# 5. UI 컨트롤러 배치
 scene.append_to_caption("\n=== 제어판 ===\n\n")
 
+# 질량에 따른 차종 분류 함수
+def get_car_type(mass):
+    if mass <= 1200:
+        return "경차 (예: 모닝, 레이)"
+    elif mass <= 1800:
+        return "준중형/중형 세단 (예: 아반떼, 쏘나타)"
+    elif mass <= 2500:
+        return "대형 SUV/픽업트럭 (예: 팰리세이드, 카니발)"
+    elif mass <= 5000:
+        return "소형 트럭/마이크로버스 (예: 포터, 카운티)"
+    elif mass <= 12000:
+        return "대형 버스/중형 트럭 (예: 시내버스, 5톤 트럭)"
+    else:
+        return "대형 트럭/대형 덤프트럭 (25톤 카고 등)"
+
+# 마찰 계수에 따른 브레이크 상태 분류 함수
+def get_brake_type(mu):
+    if mu <= 0.2:
+        return "❄️ 빙판길 / 빗길 수막현상 (매우 미끄러움)"
+    elif mu <= 0.4:
+        return "🌧️ 젖은 아스팔트 / 마모된 패드"
+    elif mu <= 0.8:
+        return "🚗 일반 차량 정상 브레이크 (표준 제동력)"
+    elif mu <= 1.5:
+        return "🚚 대형 트럭 배기/리타더 보조 브레이크 작동"
+    else:
+        return "🏎️ 고성능 레이싱 카 / 초강력 흡착 제동 시스템"
+
+# 이벤트 핸들러 함수들
 def set_mass(s):
     global m_val
-    mass_txt.text = f" 질량: {m_val} kg"
+    m_val = s.value
+    car_type = get_car_type(m_val)
+    car_type_txt.text = f"<span style='font-size: 12px; color: #666;'>[차종 가이드] {car_type}</span><br>"
+    mass_txt.text = f" 차량 질량: {m_val:,} kg ({m_val/1000:.2f} t)"
 
 def set_speed(s):
     global v_kmh
     v_kmh = s.value
-    speed_txt.text = f" 초기 속도: {v_kmh} km/h"
+    speed_txt.text = f" 초기 속도: {v_kmh:>3} km/h"
 
 def set_friction(s):
     global mu_val
+    mu_val = s.value  
+    brake_type = get_brake_type(mu_val)
+    brake_type_txt.text = f"<span style='font-size: 12px; color: #666;'>[브레이크 가이드] {brake_type}</span><br>"
     fric_txt.text = f" 브레이크 강도(마찰 계수): {mu_val:.2f}"
 
 def run_button(b):
     global running
     running = True
 
+# 버튼 배치
 button(text="▶ 테스트 시작", bind=run_button)
 scene.append_to_caption("\n\n")
 
-mass_txt = wtext(text=f" 질량: {m_val} kg\n")
-slider(min=500, max=2000, value=1000, bind=set_mass)
+# 질량 슬라이더 레이아웃
+car_type = get_car_type(m_val)
+car_type_txt = wtext(text=f"<span style='font-size: 12px; color: #666;'>[차종 가이드] {car_type}</span><br>")
+mass_txt = wtext(text=f" 차량 질량: {m_val:,} kg ({m_val/1000:.2f} t)")
+scene.append_to_caption("<br>")
+slider(min=500, max=25000, value=1500, step=100, length=300, bind=set_mass)
 scene.append_to_caption("\n\n")
 
-# 속도 슬라이더 범위를 시속 20km/h ~ 110km/h로 현실감 있게 조정
-speed_txt = wtext(text=f" 초기 속도: {v_kmh} km/h\n")
-slider(min=20, max=110, value=50, step=5, bind=set_speed)
+# 속도 슬라이더 레이아웃
+speed_txt = wtext(text=f" 초기 속도: {v_kmh} km/h")
+scene.append_to_caption("<br>")
+slider(min=20, max=110, value=50, step=5, length=300, bind=set_speed)
 scene.append_to_caption("\n\n")
 
-fric_txt = wtext(text=f" 브레이크 강도(마찰 계수): {mu_val:.2f}\n")
-slider(min=0.0, max=1.0, value=0.3, bind=set_friction)
+# 마찰력 슬라이더 레이아웃 (브레이크 안내 작은 글씨 추가)
+brake_type = get_brake_type(mu_val)
+brake_type_txt = wtext(text=f"<span style='font-size: 12px; color: #666;'>[브레이크 가이드] {brake_type}</span><br>")
+fric_txt = wtext(text=f" 브레이크 강도(마찰 계수): {mu_val:.2f}")
+scene.append_to_caption("<br>")
+slider(min=0.0, max=2.5, value=0.5, step=0.05, length=300, bind=set_friction)
 scene.append_to_caption("\n\n================\n")
 
 # 결과 및 탑승자 피해 시각화 창
@@ -87,7 +131,9 @@ while True:
     rate(100)
     
     if running:
-        # km/h 연산을 위해 내부 물리 공식에 쓰일 m/s 단위로 변환
+        current_mu = mu_val 
+        current_m = m_val
+        
         v_ms = v_kmh / 3.6
         car.v = vec(v_ms, 0, 0)
         car.pos = vec(-10, 0.3, 0) 
@@ -100,14 +146,13 @@ while True:
         while True:
             rate(100)
             
-            # 그래프에는 유저가 보기 편하게 현재 m/s 속도를 다시 km/h로 환산해서 출력
             current_v_kmh = car.v.x * 3.6
             v_curve.plot(t, current_v_kmh)
             
             # 제동 구간 진입
             if car.pos.x + 0.9 >= brake_start_x:
-                friction_force = -mu_val * m_val * g
-                a_x = friction_force / m_val
+                friction_force = -current_mu * current_m * g
+                a_x = friction_force / current_m
                 car.v.x = car.v.x + a_x * dt
                 
                 if car.v.x < 0:
@@ -119,8 +164,8 @@ while True:
             # 벽과의 충돌 조건
             if car.pos.x + 0.9 >= wall.pos.x - 0.25:
                 v_final_ms = car.v.x
-                v_final_kmh = v_final_ms * 3.6 # 충돌 시 시속 계산
-                impulse = m_val * v_final_ms   # 충격량은 표준 단위(N·s 또는 kg·m/s) 유지
+                v_final_kmh = v_final_ms * 3.6 
+                impulse = current_m * v_final_ms   
                 
                 v_curve.plot(t, v_final_kmh)
                 
@@ -128,17 +173,19 @@ while True:
                 if v_final_ms > 0:
                     result_txt.text = f"<h2 style='color: red;'><b>[충돌 발생] 충돌 속도: {v_final_kmh:.1f} km/h / 충격량: {impulse:.2f} N·s</b></h2>"
                     
-                    if impulse < 5000:
+                    if impulse < 8000:
                         injury_txt.text = "<div style='padding:15px; background-color:#fff59d; border:2px solid #fbc02d;'><h2><b>🟡 1단계: 경미한 충격</b></h2><p>차량이 가볍게 쿵 하고 흔들리는 수준입니다. 부상 위험이 거의 없습니다.</p></div>"
-                    elif impulse < 15000:
+                    elif impulse < 30000:
                         injury_txt.text = "<div style='padding:15px; background-color:#ffcc80; border:2px solid #f57c00;'><h2><b>🟠 2단계: 보통의 충격 (부상 주의)</b></h2><p>몸이 크게 흔들리며 목이나 어깨에 가벼운 염좌가 발생할 수 있습니다.</p></div>"
-                    elif impulse < 25000:
+                    elif impulse < 80000:
                         injury_txt.text = "<div style='padding:15px; background-color:#ef9a9a; border:2px solid #d32f2f;'><h2><b>🔴 3단계: 강한 충격 (위험)</b></h2><p><b>에어백 전개!</b> 얼굴 타박상 및 갈비뼈 등에 골절 위험이 있습니다.</p></div>"
                     else:
-                        injury_txt.text = "<div style='padding:15px; background-color:#b71c1c; color:white; border:3px solid black;'><h2><b>💀 4단계: 치명적인 충격 (중상)</b></h2><p><b>차량 전면부 대파!</b> 탑승자가 의식을 잃거나 중상을 입을 확률이 매우 높습니다.</p></div>"
+                        injury_txt.text = "<div style='padding:15px; background-color:#b71c1c; color:white; border:3px solid black;'><h2><b>💀 4단계: 치명적인 충격 (중상)</b></h2><p><b>차량 전면부 대파!</b> 대형 차량의 엄청난 질량 관성으로 인해 탑승자가 중상을 입을 확률이 매우 높습니다.</p></div>"
                 else:
                     result_txt.text = "<h2 style='color: green;'><b>[안전 정지] 벽에 부딪히기 전에 멈췄습니다!</b></h2>"
                     injury_txt.text = "<div style='padding:15px; background-color:#c8e6c9; border:2px solid #388e3c;'><h2><b>🟢 0단계: 절대 안전</b></h2><p>브레이크가 완벽하게 작동하여 충돌 없이 정지했습니다.</p></div>"
                 
+                running = False
+                break
                 running = False
                 break
